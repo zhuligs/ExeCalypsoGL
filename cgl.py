@@ -1,17 +1,15 @@
-#!/usr/bin/python
+#!/usr/bin/python -u
 
 # Copyright (C) 2015 Li Zhu
 # All rights reserved.
 
-import numpy as np
 import os
 import time
 import cPickle as pick
 import glob
 
+
 def pushjob(istep, npop, bdir):
-    # os.system('./calypso.x >> CALYPSO.STDOUT')
-    # os.system('scp POSCAR_* INCAR_* POTCAR accc:/home/jtse/prin/' + rdir)
     os.system('mkdir step' + str(istep))
     os.system('cp POSCAR_* step' + str(istep))
     idpool = []
@@ -32,6 +30,7 @@ def pushjob(istep, npop, bdir):
     f.close()
     return idpool
 
+
 def checkjob(idpool):
     jbuff = os.popen('ssh accc pjstat').read()
     kbuff = jbuff.split('\n')
@@ -41,15 +40,14 @@ def checkjob(idpool):
             remids.append(int(x.split()[0]))
     else:
         return True
-
     finished = True
     for id in idpool:
         if id in remids:
             finished = False
-
     return finished
 
-def pulljob(bdir, npop):
+
+def pulljob(bdir, npop, istep):
     for i in range(npop):
         ip = str(i + 1)
         rdir = bdir + '/' + ip
@@ -57,8 +55,8 @@ def pulljob(bdir, npop):
         os.system('scp accc:' + rdir + '/OUTCAR OUTCAR_' + ip)
         if checkcontcar('CONTCAR_' + ip):
             os.system('cp POSCAR_' + ip + ' CONTCAR_' + ip)
-    os.system('mkdir -p data' + ip)
-    os.system('cp POSCAR_* CONTCAR_* OUTCAR_* data' + ip)
+    os.system('mkdir -p data' + str(istep))
+    os.system('cp POSCAR_* CONTCAR_* OUTCAR_* data' + str(istep))
 
 
 def checkcontcar(contcar):
@@ -70,30 +68,64 @@ def checkcontcar(contcar):
         return False
 
 
-def newjob(bdir, kstep):
-    for istep in range(kstep, maxstep):
+def newjob(bdir, kstep, maxstep, npop):
+    for istep in range(kstep, maxstep + 1):
         os.system('./calypso.x >> CALYPSO.STDOUT')
         cglstatus = 0
+        dumpgcl(cglstatus)
         idpool = pushjob(istep, npop, bdir)
+        cglstatus = 1
+        dumpgcl(cglstatus)
         finished = False
         while not finished:
             if checkjob(idpool):
-                pulljob(bdir)
-            time.sleep(1)
+                pulljob(bdir, npop, istep)
+            time.sleep(2)
+        cglstatus = 2
+        dumpgcl(cglstatus)
 
-def restartjob(bdir, kstep):
-    f = open('idpool.dat')
-    idpool = pick.load(f)
+
+def dumpgcl(cglstatus):
+    f = open('cgls.dat', 'w')
+    pick.dump(cglstatus, f)
     f.close()
 
-    newjob(bdir, kstep)
+
+def loadgcl():
+    f = open('cgls.dat')
+    cglstatus = pick.load(f)
+    f.close()
+    return cglstatus
+
+
+def restartjob(bdir, kstep, maxstep, npop):
+
+    cglstatus = loadgcl()
+    if cglstatus == 0:
+        idpool = pushjob(kstep, npop, bdir)
+        cglstatus = 1
+        dumpgcl(cglstatus)
+    elif cglstatus == 1:
+        f = open('idpool.dat')
+        idpool = pick.load(f)
+        f.close()
+        finished = False
+        while not finished:
+            if checkjob(idpool):
+                pulljob(bdir, npop, kstep)
+            time.sleep(2)
+        cglstatus = 2
+        dumpgcl(cglstatus)
+    elif cglstatus == 2:
+        os.system('cp data' + str(kstep) + '/* .')
+        newjob(bdir, kstep + 1, maxstep, npop)
 
 
 def check_status():
     lstep = glob.glob('step')
     if lstep == []:
         restart = False
-        kstep = 0
+        kstep = 1
     else:
         restart = True
         buff = os.popen('cat step').read()
@@ -101,18 +133,40 @@ def check_status():
     return (restart, kstep)
 
 
+def readinput():
+    finput = 'input.dat'
+    indata = []
+    f = open(finput, 'r')
+    for line in f:
+        if '=' in line:
+            if line.strip()[0] != '#':
+                litem = line.split('=')
+                indata[litem[0].strip().lower()] = litem[1].strip()
+    f.close()
+
+    npop = int(indata['popsize'])
+    try:
+        systemname = indata['systemname']
+    except:
+        systemname = 'CALY'
+
+    maxstep = int(indata['maxstep'])
+
+    return(systemname, npop, maxstep)
+
+
 def cgl():
-    bdir = 'cgl/' + systemname
+    (systemname, npop, maxstep) = readinput()
+    bdir = 'CGL/' + systemname
     (restart, kstep) = check_status()
     if restart:
-        restartjob(bdir, kstep)
+        restartjob(bdir, kstep, maxstep, npop)
     else:
-        newjob(bdir, kstep)
+        newjob(bdir, kstep, maxstep, npop)
     return 0
+
 
 if __name__ == "__main__":
     # print checkjob([996705])
     # print checkjob([234])
-    pulljob('/home/jtse/prin/cp', 5)
-
-
+    cgl()
