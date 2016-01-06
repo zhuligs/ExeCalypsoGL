@@ -19,8 +19,15 @@ def pushjob(istep, npop, bdir):
         rdir = bdir + '/' + ip
         os.system('ssh accc mkdir -p ' + rdir)
         # os.system('ssh accc rm rdir/*')
-        os.system('scp POSCAR_' + ip + ' ' + rdir + '/POSCAR')
-        os.system('scp INCAR_* POTCAR pbs.sh' + rdir)
+        os.system('scp POSCAR_' + ip + ' accc:' + rdir + '/POSCAR')
+        os.system('scp INCAR_* POTCAR pbs.sh' + ' accc:' + rdir)
+        fe = open('elite.sh', 'w')
+        fe.write('#!/bin/sh\n')
+        fe.write('ssh accc << !\n')
+        fe.write('cd ' + rdir + '\n')
+        fe.write('pjsub pbs.sh\n')
+        fe.write('!\n')
+        fe.close()
         jbuff = os.popen('sh elite.sh').read()
         jid = int(jbuff.split()[5])
         idpool.append(jid)
@@ -70,17 +77,22 @@ def checkcontcar(contcar):
 
 def newjob(bdir, kstep, maxstep, npop):
     for istep in range(kstep, maxstep + 1):
+        print 'ISTEP', istep
         os.system('./calypso.x >> CALYPSO.STDOUT')
         cglstatus = 0
         dumpgcl(cglstatus)
         idpool = pushjob(istep, npop, bdir)
+        print 'idpool', idpool
         cglstatus = 1
         dumpgcl(cglstatus)
         finished = False
         while not finished:
             if checkjob(idpool):
                 pulljob(bdir, npop, istep)
-            time.sleep(2)
+                finished = True
+                print 'OPT FINISHED', istep
+            print 'OPT NOT YET FINISHED', istep
+            time.sleep(30)
         cglstatus = 2
         dumpgcl(cglstatus)
 
@@ -105,6 +117,16 @@ def restartjob(bdir, kstep, maxstep, npop):
         idpool = pushjob(kstep, npop, bdir)
         cglstatus = 1
         dumpgcl(cglstatus)
+        finished = False
+        while not finished:
+            if checkjob(idpool):
+                pulljob(bdir, npop, kstep)
+                finished = True
+                print 'OPT FINISHED', kstep
+            time.sleep(30)
+            print 'OPT NOT YET FINISHED'
+        cglstatus = 2
+        dumpgcl(cglstatus)
     elif cglstatus == 1:
         f = open('idpool.dat')
         idpool = pick.load(f)
@@ -113,12 +135,16 @@ def restartjob(bdir, kstep, maxstep, npop):
         while not finished:
             if checkjob(idpool):
                 pulljob(bdir, npop, kstep)
-            time.sleep(2)
+                finished = True
+                print 'OPT FINISHED', kstep
+            print 'OPT NOT YET FINISHED'
+            time.sleep(30)
         cglstatus = 2
         dumpgcl(cglstatus)
     elif cglstatus == 2:
         os.system('cp data' + str(kstep) + '/* .')
-        newjob(bdir, kstep + 1, maxstep, npop)
+
+    newjob(bdir, kstep + 1, maxstep, npop)
 
 
 def check_status():
@@ -135,7 +161,7 @@ def check_status():
 
 def readinput():
     finput = 'input.dat'
-    indata = []
+    indata = {}
     f = open(finput, 'r')
     for line in f:
         if '=' in line:
@@ -160,8 +186,10 @@ def cgl():
     bdir = 'CGL/' + systemname
     (restart, kstep) = check_status()
     if restart:
+        print 'RESTART JOB'
         restartjob(bdir, kstep, maxstep, npop)
     else:
+        print 'NEW JOB'
         newjob(bdir, kstep, maxstep, npop)
     return 0
 
