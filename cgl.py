@@ -69,7 +69,6 @@ def checkcontcar(contcar):
     else:
         return False
 
-
 def newjob(bdir, kstep):
     for istep in range(kstep, maxstep):
         os.system('./calypso.x >> CALYPSO.STDOUT')
