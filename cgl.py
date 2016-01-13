@@ -17,10 +17,25 @@ def pushjob(istep, npop, bdir):
         ip = str(i + 1)
         # rdir = 'cgl/' + systemname + ip
         rdir = bdir + '/' + ip
-        os.system('ssh accc mkdir -p ' + rdir)
+        while True:
+            stat0 = os.system('ssh accc mkdir -p ' + rdir)
+            if stat0 == 0:
+                break
+            else:
+                time.sleep(2)
         # os.system('ssh accc rm rdir/*')
-        os.system('scp POSCAR_' + ip + ' accc:' + rdir + '/POSCAR')
-        os.system('scp INCAR_* POTCAR pbs.sh' + ' accc:' + rdir)
+        while True:
+            stat0 = os.system('scp POSCAR_' + ip + ' accc:' + rdir + '/POSCAR')
+            if stat0 == 0:
+                break
+            else:
+                time.sleep(2)
+        while True:
+            stat0 = os.system('scp INCAR_* POTCAR pbs.sh' + ' accc:' + rdir)
+            if stat0 == 0:
+                break
+            else:
+                time.sleep(2)
         fe = open('elite.sh', 'w')
         fe.write('#!/bin/sh\n')
         fe.write('ssh accc << !\n')
@@ -28,7 +43,12 @@ def pushjob(istep, npop, bdir):
         fe.write('pjsub pbs.sh\n')
         fe.write('!\n')
         fe.close()
-        jbuff = os.popen('sh elite.sh').read()
+        while True:
+            jbuff = os.popen('sh elite.sh').read()
+            if len(jbuff.strip()) != 0:
+                break
+            else:
+                time.sleep(2)
         jid = int(jbuff.split()[5])
         idpool.append(jid)
 
@@ -39,7 +59,12 @@ def pushjob(istep, npop, bdir):
 
 
 def checkjob(idpool):
-    jbuff = os.popen('ssh accc pjstat').read()
+    while True:
+        jbuff = os.popen('ssh accc pjstat').read()
+        if len(jbuff.strip()) != 0:
+            break
+        else:
+            time.sleep(2)
     kbuff = jbuff.split('\n')
     remids = []
     if len(kbuff[6].strip()) > 0:
@@ -58,8 +83,18 @@ def pulljob(bdir, npop, istep):
     for i in range(npop):
         ip = str(i + 1)
         rdir = bdir + '/' + ip
-        os.system('scp accc:' + rdir + '/CONTCAR CONTCAR_' + ip)
-        os.system('scp accc:' + rdir + '/OUTCAR OUTCAR_' + ip)
+        while True:
+            stat0 = os.system('scp accc:' + rdir + '/CONTCAR CONTCAR_' + ip)
+            if stat0 == 0:
+                break
+            else:
+                time.sleep(2)
+        while True:
+            stat0 = os.system('scp accc:' + rdir + '/OUTCAR OUTCAR_' + ip)
+            if stat0 == 0:
+                break
+            else:
+                time.sleep(2)
         if checkcontcar('CONTCAR_' + ip):
             os.system('cp POSCAR_' + ip + ' CONTCAR_' + ip)
     os.system('mkdir -p data' + str(istep))
