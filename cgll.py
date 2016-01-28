@@ -34,21 +34,28 @@ import subprocess
 
 # optimized for DOD cluster
 
-def pushlocal(istep, npop, bdir):
+
+def pushlocal(istep, npop):
     """push geometry opt local
     :returns: TODO
 
     """
-    os.system('mkdir step' + str(istep))
-    os.system('cp POSCAR_* step' + str(istep))
+    # os.system('mkdir step' + str(istep))
+    # os.system('cp POSCAR_* step' + str(istep))
+    subprocess.call(["mkdir", "data" + str(istep)])
+    subprocess.call(["cp", "POSCAR_*", "data" + str(istep)])
     idpool = []
     for i in range(npop):
         ip = str(i + 1)
         cdir = 'Cal/' + ip
-        os.system('mkdir -p ' + cdir)
-        os.system('cp POSCAR_' + ip + ' ' + cdir + '/POSCAR')
-        os.system('cp INCAR_* POTCAR pbs.sh ' + cdir)
-        jbuff = os.popen('cd ' + cdir + '; qsub pbs.sh').read()
+        # os.system('mkdir -p ' + cdir)
+        subprocess.call(["mkdir", "-p", cdir])
+        subprocess.call(["cp", "POSCAR_" + ip, cdir + "/POSCAR"])
+        subprocess.call(["cp", "INCAR_*", "POTCAR", "pbs.sh", cdir])
+        # os.system('cp POSCAR_' + ip + ' ' + cdir + '/POSCAR')
+        # os.system('cp INCAR_* POTCAR pbs.sh ' + cdir)
+        # jbuff = os.popen('cd ' + cdir + '; qsub pbs.sh').read()
+        jbuff = subprocess.check_output(["cd", cdir + ";", "qsub", "pbs.sh"])
         jid = jbuff.strip()
         idpool.append(jid)
 
@@ -84,14 +91,14 @@ def checkjob(idpool):
     return finished
 
 
-def pullocal(bdir, npop, istep):
+def pulllocal(istep, npop):
     for i in range(npop):
         ip = str(i + 1)
-        rdir = bdir + '/' + ip
+        cdir = 'Cal/' + ip
         while True:
             try:
-                subprocess.call(["cp", rdir + "/CONTCAR", "CONTCAR_" + ip])
-                subprocess.call(["cp", rdir + "/OUTCAR", "OUTCAR_" + ip])
+                subprocess.call(["cp", cdir + "/CONTCAR", "CONTCAR_" + ip])
+                subprocess.call(["cp", cdir + "/OUTCAR", "OUTCAR_" + ip])
                 break
             except:
                 time.sleep(2)
@@ -111,20 +118,20 @@ def checkcontcar(contcar):
         return False
 
 
-def newjob(bdir, kstep, maxstep, npop):
+def newjob(kstep, maxstep, npop):
     for istep in range(kstep, maxstep + 1):
         print 'ISTEP', istep
         subprocess.call(["./calypso.x", ">>CALYPSO.STDOUT"])
         cglstatus = 0
         dumpgcl(cglstatus)
-        idpool = pushjob(istep, npop, bdir)
+        idpool = pushlocal(istep, npop)
         print 'idpool', idpool
         cglstatus = 1
         dumpgcl(cglstatus)
         finished = False
         while not finished:
             if checkjob(idpool):
-                pullocal(bdir, npop, istep)
+                pulllocal(istep, npop)
                 finished = True
                 print 'OPT FINISHED', istep
             print 'OPT NOT YET FINISH', istep
@@ -168,16 +175,65 @@ def readinput():
     return(systemname, npop, maxstep)
 
 
+def restartjob(kstep, maxstep, npop):
+
+    cglstatus = loadgcl()
+    if cglstatus == 0:
+        idpool = pushlocal(kstep, npop)
+        cglstatus = 1
+        dumpgcl(cglstatus)
+        finished = False
+        while not finished:
+            if checkjob(idpool):
+                pulllocal(kstep, npop)
+                finished = True
+                print 'OPT FINISHED', kstep
+            time.sleep(30)
+            print 'OPT NOT YET FINISHED'
+        cglstatus = 2
+        dumpgcl(cglstatus)
+    elif cglstatus == 1:
+        f = open('idpool.dat')
+        idpool = pick.load(f)
+        f.close()
+        finished = False
+        while not finished:
+            if checkjob(idpool):
+                pulllocal(kstep, npop)
+                finished = True
+                print 'OPT FINISHED', kstep
+            print 'OPT NOT YET FINISHED'
+            time.sleep(30)
+        cglstatus = 2
+        dumpgcl(cglstatus)
+    elif cglstatus == 2:
+        os.system('cp data' + str(kstep) + '/* .')
+
+    newjob(kstep + 1, maxstep, npop)
+
+
+def check_status():
+    lstep = glob.glob('step')
+    if lstep == []:
+        restart = False
+        kstep = 1
+    else:
+        restart = True
+        buff = os.popen('cat step').read()
+        kstep = int(buff.strip())
+    return (restart, kstep)
+
+
 def cgl():
     (systemname, npop, maxstep) = readinput()
-    bdir = 'CGL/' + systemname
+    # bdir = 'CGL/' + systemname
     (restart, kstep) = check_status()
     if restart:
         print 'RESTART JOB'
-        restartjob(bdir, kstep, maxstep, npop)
+        restartjob(kstep, maxstep, npop)
     else:
         print 'NEW JOB'
-        newjob(bdir, kstep, maxstep, npop)
+        newjob(kstep, maxstep, npop)
     return 0
 
 
