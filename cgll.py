@@ -40,22 +40,22 @@ def pushlocal(istep, npop):
     :returns: TODO
 
     """
-    # os.system('mkdir step' + str(istep))
-    # os.system('cp POSCAR_* step' + str(istep))
-    subprocess.call(["mkdir", "data" + str(istep)])
-    subprocess.call(["cp", "POSCAR_*", "data" + str(istep)])
+    os.system('mkdir data' + str(istep))
+    os.system('cp POSCAR_* data' + str(istep))
+    # subprocess.call(["mkdir", "data" + str(istep)])
+    # subprocess.call(["cp", "POSCAR_*", "data" + str(istep)])
     idpool = []
     for i in range(npop):
         ip = str(i + 1)
         cdir = 'Cal/' + ip
-        # os.system('mkdir -p ' + cdir)
-        subprocess.call(["mkdir", "-p", cdir])
-        subprocess.call(["cp", "POSCAR_" + ip, cdir + "/POSCAR"])
-        subprocess.call(["cp", "INCAR_*", "POTCAR", "pbs.sh", cdir])
-        # os.system('cp POSCAR_' + ip + ' ' + cdir + '/POSCAR')
-        # os.system('cp INCAR_* POTCAR pbs.sh ' + cdir)
-        # jbuff = os.popen('cd ' + cdir + '; qsub pbs.sh').read()
-        jbuff = subprocess.check_output(["cd", cdir + ";", "qsub", "pbs.sh"])
+        os.system('mkdir -p ' + cdir)
+        # subprocess.call(["mkdir", "-p", cdir])
+        # subprocess.call(["cp", "POSCAR_" + ip, cdir + "/POSCAR"])
+        # subprocess.call(["cp", "INCAR_*", "POTCAR", "pbs.sh", cdir])
+        os.system('cp POSCAR_' + ip + ' ' + cdir + '/POSCAR')
+        os.system('cp INCAR_* POTCAR pbs.sh ' + cdir)
+        jbuff = os.popen('cd ' + cdir + '; qsub pbs.sh').read()
+        # jbuff = subprocess.check_output(["cd", cdir + ";", "qsub", "pbs.sh"])
         jid = jbuff.strip()
         idpool.append(jid)
 
@@ -68,17 +68,26 @@ def pushlocal(istep, npop):
 def checkjob(idpool):
 
     while True:
-        try:
-            jbuff = subprocess.check_output(["qstat", "-u", "zhuli"])
+        # try:
+        #     jbuff = subprocess.check_output(["qstat", "-u", "zhuli"])
+        #     break
+        # except:
+        #     time.sleep(2)
+        jstat = os.system("qstat -u zhuli > qbuff")
+        if jstat == 0:
             break
-        except:
+        else:
             time.sleep(2)
 
-    if len(jbuff.strip()) > 0:
-        kbuff = jbuff.strip().split('\n')
+    jbuff = []
+    with open("qbuff") as f:
+        for line in f:
+            jbuff.append(line)
+
+    if len(jbuff) > 0:
         reminds = []
         try:
-            for x in kbuff[2:]:
+            for x in jbuff[2:]:
                 reminds.append(x.split()[0])
         except:
             return True
@@ -97,20 +106,26 @@ def pulllocal(istep, npop):
         cdir = 'Cal/' + ip
         while True:
             try:
-                subprocess.call(["cp", cdir + "/CONTCAR", "CONTCAR_" + ip])
-                subprocess.call(["cp", cdir + "/OUTCAR", "OUTCAR_" + ip])
+                # subprocess.call(["cp", cdir + "/CONTCAR", "CONTCAR_" + ip])
+                # subprocess.call(["cp", cdir + "/OUTCAR", "OUTCAR_" + ip])
+                os.system("cp " + cdir + "/CONTCAR CONTCAR_" + ip)
+                os.system("cp " + cdir + "/OUTCAR OUTCAR_" + ip)
                 break
             except:
                 time.sleep(2)
         if checkcontcar('CONTCAR_' + ip):
-            subprocess.call(["cp", "POSCAR_" + ip, "CONTCAR_" + ip])
-    subprocess.call(["mkdir", "-p", "data" + str(istep)])
-    subprocess.call(["cp", "POSCAR_*", "OUTCAR_*", "CONTCAR_*",
-                     "data" + str(istep)])
+            # subprocess.call(["cp", "POSCAR_" + ip, "CONTCAR_" + ip])
+            os.system("cp POSCAR_" + ip + " CONTCAR_" + ip)
+    # subprocess.call(["mkdir", "-p", "data" + str(istep)])
+    # os.system("mkdir -p data")
+    # subprocess.call(["cp", "POSCAR_*", "OUTCAR_*", "CONTCAR_*",
+    # "data" + str(istep)])
+    os.system("cp POSCAR_* OUTCAR_* CONTCAR_* data" + str(istep))
 
 
 def checkcontcar(contcar):
-    buff = subprocess.check_output(["du", contcar])
+    # buff = subprocess.check_output(["du", contcar])
+    buff = os.popen("du " + contcar)
     jbuff = int(buff.split()[0])
     if jbuff == 0:
         return True
