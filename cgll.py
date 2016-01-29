@@ -125,7 +125,7 @@ def pulllocal(istep, npop):
 
 def checkcontcar(contcar):
     # buff = subprocess.check_output(["du", contcar])
-    buff = os.popen("du " + contcar)
+    buff = os.popen("du " + contcar).read()
     jbuff = int(buff.split()[0])
     if jbuff == 0:
         return True
