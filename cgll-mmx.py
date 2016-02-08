@@ -5,7 +5,7 @@
 # Copyright (C) 2016 Li Zhu
 # All rights reserved.
 #
-# cgll.py
+# cgll-mmx.py
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -30,12 +30,12 @@ import os
 import time
 import cPickle as pick
 import glob
-import subprocess
+# import subprocess
 
-# optimized for DOD cluster
+# optimized for memex cluster
 
 
-def pushlocal(istep, npop):
+def pushlocal(systemname, istep, npop):
     """push geometry opt local
     :returns: TODO
 
@@ -54,6 +54,9 @@ def pushlocal(istep, npop):
         # subprocess.call(["cp", "INCAR_*", "POTCAR", "pbs.sh", cdir])
         os.system('cp POSCAR_' + ip + ' ' + cdir + '/POSCAR')
         os.system('cp INCAR_* POTCAR pbs.sh ' + cdir)
+        time.sleep(1)
+        os.system('sed -i "s/TEMPNAME/' + systemname + '.' + str(istep) +
+                  '.' + str(i) + '/" ' + cdir + '/pbs.sh')
         jbuff = os.popen('cd ' + cdir + '; qsub pbs.sh').read()
         # jbuff = subprocess.check_output(["cd", cdir + ";", "qsub", "pbs.sh"])
         jid = jbuff.strip()
@@ -73,7 +76,7 @@ def checkjob(idpool):
         #     break
         # except:
         #     time.sleep(2)
-        jstat = os.system("qstat -u zhuli > qbuff")
+        jstat = os.system("qstat -u lzhu > qbuff")
         if jstat == 0:
             break
         else:
@@ -87,8 +90,10 @@ def checkjob(idpool):
     if len(jbuff) > 0:
         reminds = []
         try:
-            for x in jbuff[2:]:
-                reminds.append(x.split()[0])
+            for x in jbuff[5:]:
+                xx = x.split()
+                if xx[9] == 'R' or xx[9] == 'Q':
+                    reminds.append(x.split()[0])
         except:
             return True
     else:
@@ -133,13 +138,14 @@ def checkcontcar(contcar):
         return False
 
 
-def newjob(kstep, maxstep, npop):
+def newjob(systemname, kstep, maxstep, npop):
     for istep in range(kstep, maxstep + 1):
         print 'ISTEP', istep
-        subprocess.call(["./calypso.x", ">>CALYPSO.STDOUT"])
+        # subprocess.call(["./calypso.x", ">>CALYPSO.STDOUT"])
+        os.system("./calypso.x >> CALYPSO.STDOUT")
         cglstatus = 0
         dumpgcl(cglstatus)
-        idpool = pushlocal(istep, npop)
+        idpool = pushlocal(systemname, istep, npop)
         print 'idpool', idpool
         cglstatus = 1
         dumpgcl(cglstatus)
@@ -149,8 +155,8 @@ def newjob(kstep, maxstep, npop):
                 pulllocal(istep, npop)
                 finished = True
                 print 'OPT FINISHED', istep
-            print 'OPT NOT YET FINISH', istep
-            time.sleep(30)
+            # print 'OPT NOT YET FINISH', istep
+            time.sleep(3)
         cglstatus = 2
         dumpgcl(cglstatus)
 
@@ -190,11 +196,11 @@ def readinput():
     return(systemname, npop, maxstep)
 
 
-def restartjob(kstep, maxstep, npop):
+def restartjob(systemname, kstep, maxstep, npop):
 
     cglstatus = loadgcl()
     if cglstatus == 0:
-        idpool = pushlocal(kstep, npop)
+        idpool = pushlocal(systemname, kstep, npop)
         cglstatus = 1
         dumpgcl(cglstatus)
         finished = False
@@ -245,10 +251,10 @@ def cgl():
     (restart, kstep) = check_status()
     if restart:
         print 'RESTART JOB'
-        restartjob(kstep, maxstep, npop)
+        restartjob(systemname, kstep, maxstep, npop)
     else:
         print 'NEW JOB'
-        newjob(kstep, maxstep, npop)
+        newjob(systemname, kstep, maxstep, npop)
     return 0
 
 
@@ -256,8 +262,6 @@ if __name__ == "__main__":
     # print checkjob([996705])
     # print checkjob([234])
     cgl()
-
-
 
 
 
