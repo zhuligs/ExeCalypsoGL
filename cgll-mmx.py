@@ -56,7 +56,7 @@ def pushlocal(systemname, istep, npop):
         os.system('cp INCAR_* POTCAR pbs.sh ' + cdir)
         time.sleep(1)
         os.system('sed -i "s/TEMPNAME/' + systemname + '.' + str(istep) +
-                  '.' + str(i) + '/" ' + cdir + '/pbs.sh')
+                  '.' + ip + '/" ' + cdir + '/pbs.sh')
         jbuff = os.popen('cd ' + cdir + '; qsub pbs.sh').read()
         # jbuff = subprocess.check_output(["cd", cdir + ";", "qsub", "pbs.sh"])
         jid = jbuff.strip()
