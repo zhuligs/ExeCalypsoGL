@@ -68,6 +68,35 @@ def pushlocal(systemname, istep, npop):
     return idpool
 
 
+def pushlocal2(systemname, istep, npop):
+    os.system('mkdir data' + str(istep))
+    npara = 6
+    idpool = []
+    njob = npop / npara
+    ip = 0
+    for ijob in range(njob):
+        cdir = 'Cal/' + str(ijob)
+        os.system('mkdir -p ' + cdir)
+        for ipa in range(npara):
+            ip += 1
+            pdir = cdir + '/paraCal' + str(ipa)
+            os.system('mkdir -p ' + pdir)
+            os.system('cp POSCAR_' + str(ip) + ' ' + pdir + '/POSCAR')
+            os.system('cp INCAR_* POTCAR runvasp.sh ' + pdir)
+        time.sleep(1)
+        os.system('cp pbs.sh parajob.py ' + cdir)
+        os.system('sed -i "s/TEMPNAME/' + systemname + '.' + str(istep) +
+                  '.' + str(ijob) + '/" ' + cdir + '/pbs.sh')
+        jbuff = os.popen('cd ' + cdir + '; qsub pbs.sh').read()
+        jid = jbuff.strip()
+        idpool.append(jid)
+
+    f = open('idpool.dat', 'w')
+    pick.dump(idpool, f)
+    f.close()
+    return idpool
+
+
 def checkjob(idpool):
 
     while True:
@@ -128,6 +157,22 @@ def pulllocal(istep, npop):
     os.system("cp POSCAR_* OUTCAR_* CONTCAR_* data" + str(istep))
 
 
+def pulllocal2(istep, npop):
+    npara = 6
+    njob = npop / npara
+    ip = 0
+    for ijob in range(njob):
+        cdir = 'Cal/' + str(ijob)
+        for ipa in range(npara):
+            ip += 1
+            pdir = cdir + '/paraCal' + str(ipa)
+            os.system('cp ' + pdir + '/CONTCAR CONTCAR_' + str(ip))
+            os.system('cp ' + pdir + '/OUTCAR OUTCAR_' + str(ip))
+            if checkcontcar('CONTCAR_' + str(ip)):
+                os.system('cp POSCAR_' + str(ip) + ' CONTCAR_' + str(ip))
+    os.system("cp POSCAR_* OUTCAR_* CONTCAR_* data" + str(istep))
+
+
 def checkcontcar(contcar):
     # buff = subprocess.check_output(["du", contcar])
     buff = os.popen("du " + contcar).read()
@@ -139,7 +184,9 @@ def checkcontcar(contcar):
 
 
 def newjob(systemname, kstep, maxstep, npop):
-    for istep in range(kstep, maxstep + 1):
+    # for istep in range(kstep, maxstep + 1):
+    istep = kstep
+    while istep < maxstep + 1:
         print 'ISTEP', istep
         # subprocess.call(["./calypso.x", ">>CALYPSO.STDOUT"])
         os.system("./calypso.x >> CALYPSO.STDOUT")
@@ -159,6 +206,34 @@ def newjob(systemname, kstep, maxstep, npop):
             time.sleep(3)
         cglstatus = 2
         dumpgcl(cglstatus)
+        istep += 1
+        (systemname, npop, maxstep) = readinput()
+
+
+def newjob2(systemname, kstep, maxstep, npop):
+    # for istep in range(kstep, maxstep + 1):
+    istep = kstep
+    while istep < maxstep + 1:
+        print 'ISTEP', istep
+        os.system("./calypso.x >> CALYPSO.STDOUT")
+        cglstatus = 0
+        dumpgcl(cglstatus)
+        idpool = pushlocal2(systemname, istep, npop)
+        print 'idpool', idpool
+        cglstatus = 1
+        dumpgcl(cglstatus)
+        finished = False
+        while not finished:
+            if checkjob(idpool):
+                pulllocal2(istep, npop)
+                finished = True
+                print 'OPT FINISHED', istep
+            # print 'OPT NOT YET FINISH', istep
+            time.sleep(3)
+        cglstatus = 2
+        dumpgcl(cglstatus)
+        istep += 1
+        (systemname, npop, maxstep) = readinput()
 
 
 def dumpgcl(cglstatus):
@@ -254,7 +329,7 @@ def cgl():
         restartjob(systemname, kstep, maxstep, npop)
     else:
         print 'NEW JOB'
-        newjob(systemname, kstep, maxstep, npop)
+        newjob2(systemname, kstep, maxstep, npop)
     return 0
 
 
