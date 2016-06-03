@@ -6,6 +6,7 @@
 # All rights reserved.
 #
 # cgll-mmx.py
+# VERSION: 2016Jun3
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -105,7 +106,7 @@ def checkjob(idpool):
         #     break
         # except:
         #     time.sleep(2)
-        jstat = os.system("qstat -u lzhu > qbuff")
+        jstat = os.system("qstat > qbuff")
         if jstat == 0:
             break
         else:
@@ -119,9 +120,9 @@ def checkjob(idpool):
     if len(jbuff) > 0:
         reminds = []
         try:
-            for x in jbuff[5:]:
+            for x in jbuff[2:]:
                 xx = x.split()
-                if xx[9] == 'R' or xx[9] == 'Q':
+                if xx[4] == 'R' or xx[4] == 'Q':
                     reminds.append(x.split()[0])
         except:
             return True
@@ -138,6 +139,8 @@ def pulllocal(istep, npop):
     for i in range(npop):
         ip = str(i + 1)
         cdir = 'Cal/' + ip
+        os.systme("touch " + cdir + "/CONTCAR")
+        os.systme("touch " + cdir + "/OUTCAR")
         while True:
             try:
                 # subprocess.call(["cp", cdir + "/CONTCAR", "CONTCAR_" + ip])
@@ -180,7 +183,26 @@ def checkcontcar(contcar):
     if jbuff == 0:
         return True
     else:
-        return False
+        return checkc2(contcar)
+
+
+def checkc2(contcar):
+    buff = []
+    with open(contcar) as f:
+        for line in f:
+            buff.append(line.split())
+    if len(buff) < 8:
+        return True
+    else:
+        try:
+            natom = sum(map(int, buff[5]))
+        except:
+            del(buff[5])
+            natom = sum(map(int, buff[5]))
+        if len(buff) < 7+natom:
+            return True
+        else:
+            return False
 
 
 def newjob(systemname, kstep, maxstep, npop):
