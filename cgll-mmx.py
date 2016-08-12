@@ -351,7 +351,7 @@ def cgl():
         restartjob(systemname, kstep, maxstep, npop)
     else:
         print 'NEW JOB'
-        newjob2(systemname, kstep, maxstep, npop)
+        newjob(systemname, kstep, maxstep, npop)
     return 0
 
 
