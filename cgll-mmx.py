@@ -440,7 +440,7 @@ def vsccgl():
     numthread = cgldata.maxcalyrun
     runs = []
     for i in range(numthread):
-        runs.append(threading.Thread(target=qcgl, args=()))
+        runs.append(threading.Thread(target=qcgl, args=(i, )))
     for t in runs:
         t.start()
     for t in runs:
@@ -459,8 +459,9 @@ def initcgl(xdir, doi, paras, x):
                 temp_na, temp_nof, temp_vol, temp_ps, temp_ms)
 
 
-def qcgl():
+def qcgl(itime):
     # cgldata.
+    time.sleep(itime)
     while True:
         for i in range(len(cgldata.jobpool)):
             if cgldata.jobpool[i] == 0:
@@ -484,6 +485,7 @@ def gen_doi():
 
 def write_input(xdir, doi, temp_sn, temp_nos, temp_noa, temp_an,
                 temp_na, temp_nof, temp_vol, temp_ps, temp_ms):
+    temp_sn = xdir.split('/')[-1]
     template = cp(cgldata.inputtemplate)
     template = template.replace('TEMP_SN', temp_sn)
     template = template.replace('TEMP_NOS', temp_nos)
