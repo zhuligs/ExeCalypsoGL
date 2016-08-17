@@ -6,7 +6,7 @@
 # All rights reserved.
 #
 # cgll-mmx.py
-# VERSION: 2016Jun3
+# VERSION: 2016Aug15
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -28,10 +28,16 @@
 # *****************************************************************************
 
 import os
+import sys
 import time
 import cPickle as pick
 import glob
-# import subprocess
+import itertools
+import threading
+import numpy as np
+import cgldata
+from copy import deepcopy as cp
+
 
 # optimized for memex cluster
 
@@ -139,8 +145,8 @@ def pulllocal(istep, npop):
     for i in range(npop):
         ip = str(i + 1)
         cdir = 'Cal/' + ip
-        os.systme("touch " + cdir + "/CONTCAR")
-        os.systme("touch " + cdir + "/OUTCAR")
+        os.system("touch " + cdir + "/CONTCAR")
+        os.system("touch " + cdir + "/OUTCAR")
         while True:
             try:
                 # subprocess.call(["cp", cdir + "/CONTCAR", "CONTCAR_" + ip])
@@ -158,6 +164,7 @@ def pulllocal(istep, npop):
     # subprocess.call(["cp", "POSCAR_*", "OUTCAR_*", "CONTCAR_*",
     # "data" + str(istep)])
     os.system("cp POSCAR_* OUTCAR_* CONTCAR_* data" + str(istep))
+    os.system("cd data" + str(istep) + ";bzip2 *")
 
 
 def pulllocal2(istep, npop):
@@ -174,6 +181,7 @@ def pulllocal2(istep, npop):
             if checkcontcar('CONTCAR_' + str(ip)):
                 os.system('cp POSCAR_' + str(ip) + ' CONTCAR_' + str(ip))
     os.system("cp POSCAR_* OUTCAR_* CONTCAR_* data" + str(istep))
+    os.system("cd data" + str(istep) + ";bzip2 *")
 
 
 def checkcontcar(contcar):
@@ -226,6 +234,14 @@ def newjob(systemname, kstep, maxstep, npop):
                 print 'OPT FINISHED', istep
             # print 'OPT NOT YET FINISH', istep
             time.sleep(3)
+            # stop job
+            if os.path.isfile('CSTOP'):
+                os.system('rm -f CSTOP')
+                print 'CSTOP'
+                for ii in idpool:
+                    print 'qdel ' + ii
+                    os.system('qdel ' + ii)
+                return 0
         cglstatus = 2
         dumpgcl(cglstatus)
         istep += 1
@@ -355,10 +371,216 @@ def cgl():
     return 0
 
 
+def redupl(compo):
+    compos = []
+    for x in compo:
+        mx = min(x)
+        did = True
+        for iterm in x:
+            if iterm % mx == 0:
+                did = True
+            else:
+                did = False
+                break
+        ncom = []
+        for iterm in x:
+            if did:
+                ncom.append(iterm/mx)
+            else:
+                ncom.append(iterm)
+
+        compos.append(ncom)
+    compos.sort()
+    xcompos = list(compos for compos,_ in itertools.groupby(compos))
+    # for x in compos:
+    #     print x
+    # print "DAFDASFDASFDASFSDAFDASFDSAFDS"
+    # for x in xcompos:
+    #     print x
+    # print len(xcompos)
+    return xcompos
+
+
+def list2dir(x):
+    xl = []
+    for ix in x:
+        xl.append(str(ix))
+    xls = '_'.join(xl)
+    return 'Z_' + xls
+
+
+def vsccgl():
+    # the number of element, vsc
+    # var_vsc [n1, n2, n3], nele = len(var_vsc)
+    # generate composition
+    # composition = []
+    (paras, varv) = gen_para()
+    (temp_sn, temp_nos, temp_noa, temp_an, temp_nof,
+        temp_vol, temp_ps, temp_ms) = paras
+    doi = gen_doi()
+    compo = []
+    nele = int(temp_nos)
+    if nele == 3:
+        for i1 in range(varv[0][0], varv[0][1] + 1):
+            for i2 in range(varv[1][0], varv[1][1] + 1):
+                for i3 in range(varv[2][0], varv[2][1] + 1):
+                    compo.append([i1, i2, i3])
+
+    # Work dir
+    wdir = os.getcwd()
+    compos = redupl(compo)
+    for x in compos:
+        os.chdir(wdir)
+        xdir = wdir + '/' + list2dir(x)
+        os.system('mkdir -p ' + xdir)
+        initcgl(xdir, doi, paras, x)
+        cgldata.jobpool.append(0)
+        cgldata.xdirs.append(xdir)
+    # sys.exit(1)
+    numthread = cgldata.maxcalyrun
+    runs = []
+    for i in range(numthread):
+        runs.append(threading.Thread(target=qcgl, args=()))
+    for t in runs:
+        t.start()
+    for t in runs:
+        t.join()
+
+
+def initcgl(xdir, doi, paras, x):
+    (temp_sn, temp_nos, temp_noa, temp_an, temp_nof,
+        temp_vol, temp_ps, temp_ms) = paras
+    xl = []
+    for ix in x:
+        xl.append(str(ix))
+    temp_na = ' '.join(xl)
+    os.system('cp calypso.x POTCAR INCAR_* pbs.sh ' + xdir)
+    write_input(xdir, doi, temp_sn, temp_nos, temp_noa, temp_an,
+                temp_na, temp_nof, temp_vol, temp_ps, temp_ms)
+
+
+def qcgl():
+    # cgldata.
+    while True:
+        for i in range(len(cgldata.jobpool)):
+            if cgldata.jobpool[i] == 0:
+                cgldata.jobpool[i] = 1
+                os.chdir(cgldata.xdirs[i])
+                cgl()
+            if 0 not in cgldata.jobpool:
+                return
+
+
+def gen_doi():
+    buff = os.popen("awk '/RWIGS/{print $6}' POTCAR").read()
+    fbuff = np.array(buff.split(), float)
+    # print fbuff
+    doi = np.zeros((3, 3))
+    for i in range(3):
+        for j in range(3):
+            doi[i][j] = (fbuff[i] + fbuff[j]) * 0.6
+    return doi
+
+
+def write_input(xdir, doi, temp_sn, temp_nos, temp_noa, temp_an,
+                temp_na, temp_nof, temp_vol, temp_ps, temp_ms):
+    template = cp(cgldata.inputtemplate)
+    template = template.replace('TEMP_SN', temp_sn)
+    template = template.replace('TEMP_NOS', temp_nos)
+    template = template.replace('TEMP_NOA', temp_noa)
+    template = template.replace('TEMP_AN', temp_an)
+    template = template.replace('TEMP_NA', temp_na)
+    template = template.replace('TEMP_NOF', temp_nof)
+    template = template.replace('TEMP_VOL', temp_vol)
+    template = template.replace('TEMP_PS', temp_ps)
+    template = template.replace('TEMP_MS', temp_ms)
+    f = open(xdir + '/input.dat', 'w')
+    f.write(template)
+    f.write('@DistanceOfIon\n')
+    for x in doi:
+        f.write("%3.2f  %3.2f %3.2f\n" % tuple(x))
+    f.write('@End\n')
+    f.close()
+
+
+def gen_para():
+    f = open('input.dat', 'r')
+    indata = {}
+    for line in f:
+        if '=' in line:
+            if line.strip()[0] != '#':
+                litem = line.split('=')
+                indata[litem[0].strip().lower()] = litem[1].strip()
+    f.close()
+
+    # NameOfAtoms = indata['nameofatoms'].split()
+    temp_sn = indata['systemname']
+    temp_nos = indata['numberofspecies']
+    temp_noa = indata['nameofatoms']
+    temp_an = indata['atomicnumber']
+    temp_nof = indata['numberofformula']
+    temp_ps = indata['popsize']
+    temp_ms = indata['maxstep']
+    temp_vol = indata['volume']
+
+    vscrange = map(int, indata['ctrlrange'].split())
+    if int(temp_nos) == 3:
+        varv = [[vscrange[0], vscrange[1]],
+                [vscrange[2], vscrange[3]],
+                [vscrange[4], vscrange[5]]]
+    elif int(temp_nos) == 2:
+        varv = [[vscrange[0], vscrange[1]],
+                [vscrange[2], vscrange[3]]]
+
+    return((temp_sn, temp_nos, temp_noa, temp_an, temp_nof,
+           temp_vol, temp_ps, temp_ms), varv)
+
+
+# class Job:
+#     def __init__(self,
+#                  executed=None,
+#                  dir=None):
+
+#         if dir is None:
+#             self.dir = None
+#         else:
+#             self.dir = str(dir)
+
+#         if executed is None:
+#             self.executed = False
+#         else:
+#             self.executed = executed
+
+#     def set_executed(self, executed):
+#         self.executed = executed
+
+#     def set_dir(self, dir):
+#         self.dir = dir
+
+
+def utest1():
+    doi = gen_doi()
+    xdir = 'ZD'
+    temp_sn = 'ABC'
+    temp_nos = '3'
+    temp_noa = 'Ca B C'
+    temp_an = '1 2 3'
+    temp_na = '1 3 3'
+    temp_nof = '2 2'
+    temp_vol = '70'
+    temp_ps = '40'
+    temp_ms = '100'
+    write_input(xdir, doi, temp_sn, temp_nos, temp_noa, temp_an,
+                temp_na, temp_nof, temp_vol, temp_ps, temp_ms)
+
+
 if __name__ == "__main__":
     # print checkjob([996705])
     # print checkjob([234])
-    cgl()
+    # cgl()
+    vsccgl()
+    # utest1()
+
 
 
 
